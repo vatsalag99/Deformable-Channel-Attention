@@ -16,7 +16,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-import models
+import dca_models as models 
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -66,7 +66,7 @@ parser.add_argument('--ksize', default=None, type=list,
                     help='Manually select the eca module kernel size')
 parser.add_argument('--action', default='', type=str,
                     help='other information.')
-                    
+
 
 best_prec1 = 0
 
@@ -120,7 +120,7 @@ def main():
             model = torch.nn.DataParallel(model).cuda()
 
     print(model)
-    
+
     # get the number of models parameters
     print('Number of models parameters: {}'.format(
         sum([p.data.nelement() for p in model.parameters()])))
@@ -189,7 +189,7 @@ def main():
         n = time.time()
         print((n-m)/3600)
         return
-    
+
     directory = "runs/%s/"%(args.arch + '_' + args.action)
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -229,7 +229,7 @@ def main():
             'best_prec1': best_prec1,
             'optimizer' : optimizer.state_dict(),
         }, is_best)
-        
+
         # 将Loss,train_prec1,train_prec5,val_prec1,val_prec5用.txt的文件存起来
         data_save(directory + 'Loss_plot.txt', Loss_plot)
         data_save(directory + 'train_prec1.txt', train_prec1_plot)
@@ -287,7 +287,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-     
+
                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
                    epoch, i, len(train_loader), batch_time=batch_time,
@@ -343,7 +343,7 @@ def validate(val_loader, model, criterion):
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     directory = "runs/%s/"%(args.arch + '_' + args.action)
-    
+
     filename = directory + filename
     torch.save(state, filename)
     if is_best:
