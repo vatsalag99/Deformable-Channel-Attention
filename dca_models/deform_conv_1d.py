@@ -1,5 +1,10 @@
 import torch
-from torch import nn 
+from torch import nn
+from torch.autograd import Variable
+
+import numpy as np
+from einops import rearrange, reduce, repeat
+
 
 class DeformConv1D(nn.Module):
     def __init__(self, inc=1, outc=1, kernel_size=3, padding=1, bias=None):
@@ -13,7 +18,7 @@ class DeformConv1D(nn.Module):
     def forward(self, x, offset):
         # x - b, c, 1, 1
         # offset - b k c (k = kernel_size)
-
+        
         x = rearrange(x, 'b c h w -> b c (h w)')
         x = rearrange(x, 'b c n -> b n c')
 
@@ -89,7 +94,7 @@ class DeformConv1D(nn.Module):
     def _get_p_0(w, N, dtype):
         p_0_x = np.meshgrid(range(1, w+1))[0]
         p_0 = p_0_x.flatten().reshape(1, 1, w).repeat(N, axis=1)
-        p_0 = Variable(torch.from_numpy(p_0).type(torch.FloatTensor), requires_grad=False)
+        p_0 = Variable(torch.from_numpy(p_0).type(dtype), requires_grad=False)
         return p_0
 
     def _get_p(self, offset, dtype):

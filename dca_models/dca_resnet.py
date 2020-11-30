@@ -56,7 +56,7 @@ class DCABottleneck(nn.Module):
         self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(planes * 4)
         self.relu = nn.ReLU(inplace=True)
-        self.eca = dca_layer(planes * 4, k_size, use_cov)
+        self.dca = dca_layer(planes * 4, k_size, use_cov)
         self.downsample = downsample
         self.stride = stride
 
@@ -122,7 +122,7 @@ class ResNet(nn.Module):
         layers.append(block(self.inplanes, planes, stride, downsample, k_size, use_cov))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes, k_size=k_size, use_cov))
+            layers.append(block(self.inplanes, planes, k_size=k_size, use_cov=use_cov))
 
         return nn.Sequential(*layers)
 
@@ -178,7 +178,7 @@ def dca_resnet50(k_size=[3, 3, 3, 3], num_classes=1000, pretrained=False, use_co
         num_classes:The classes of classification
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    print("Constructing eca_resnet50......")
+    print("Constructing dca_resnet50......")
     model = ResNet(DCABottleneck, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
     model.avgpool = nn.AdaptiveAvgPool2d(1)
     return model

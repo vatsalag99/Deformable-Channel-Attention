@@ -1,8 +1,10 @@
 import torch
 from torch import nn
 
-from deform_offsets_module import dca_offsets_layer
-from deform_conv_1d import DeformConv1D
+from .deform_offsets_module import dca_offsets_layer
+from .deform_conv_1d import DeformConv1D
+
+from einops import rearrange, reduce, repeat
 
 class dca_layer(nn.Module):
     """Constructs a Deformable ECA module.

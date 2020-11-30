@@ -16,7 +16,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-import dca_models as models 
+import dca_models as models
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -60,10 +60,12 @@ parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int, nargs='+',
                     help='seed for initializing training. ')
-parser.add_argument('--gpu', default=None, type=int,
+parser.add_argument('--gpu', default=0, type=int,
                     help='GPU id to use.')
 parser.add_argument('--ksize', default=None, type=list,
                     help='Manually select the eca module kernel size')
+parser.add_argument('--use_cov',
+                    help='Select whether the DCA module uses covariance matrix for offsets')
 parser.add_argument('--action', default='', type=str,
                     help='other information.')
 
@@ -119,7 +121,7 @@ def main():
         else:
             model = torch.nn.DataParallel(model).cuda()
 
-    print(model)
+    # print(model)
 
     # get the number of models parameters
     print('Number of models parameters: {}'.format(

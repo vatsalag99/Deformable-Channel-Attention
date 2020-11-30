@@ -2,6 +2,8 @@ import torch
 from torch import nn
 from torch.nn.parameter import Parameter
 
+from einops import rearrange, reduce, repeat
+
 class dca_offsets_layer(nn.Module):
     """Constructs a Offset Generation module.
     """
@@ -12,7 +14,7 @@ class dca_offsets_layer(nn.Module):
         self.n_offsets = n_offsets
 
         self.conv = nn.Conv2d(channel, n_offsets, kernel_size=1)
-            
+
     def covariance_features(self, x):
         """
         Takes in a feature map and returns the unnormalized covariance matrix
