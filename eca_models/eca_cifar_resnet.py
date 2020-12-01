@@ -14,7 +14,7 @@ class CifarECABasicBlock(nn.Module):
         if inplanes != planes:
             self.downsample = nn.Sequential(nn.Conv2d(inplanes, planes, kernel_size=1, stride=stride, bias=False),
                                             nn.BatchNorm2d(planes))
-        eleca:
+        else:
             self.downsample = lambda x: x
         self.stride = stride
 
