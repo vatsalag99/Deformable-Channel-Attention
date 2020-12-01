@@ -2,6 +2,9 @@ import torch.nn as nn
 from torchvision.models import ResNet
 from .eca_module import eca_layer as ECALayer
 
+def conv3x3(in_planes, out_planes, stride=1):
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+
 class CifarECABasicBlock(nn.Module):
     def __init__(self, inplanes, planes, stride=1, k_size=3):
         super(CifarECABasicBlock, self).__init__()
@@ -35,7 +38,7 @@ class CifarECABasicBlock(nn.Module):
 
 
 class CifarECAResNet(nn.Module):
-    def __init__(self, block, n_size, num_classes=10, k_size=[3,3,3]):
+    def __init__(self, block, n_size, num_classes=100, k_size=[3,3,3]):
         super(CifarECAResNet, self).__init__()
         self.inplane = 16
         self.conv1 = nn.Conv2d(
