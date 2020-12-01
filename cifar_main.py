@@ -177,7 +177,7 @@ def main():
     train_dataset = datasets.CIFAR100('./CIFAR100/',
                                       train=True,
                                       transform=transforms.Compose([
-                                          transforms.RandomResizedCrop(224),
+                    #                      transforms.RandomResizedCrop(224),
                                           transforms.RandomHorizontalFlip(),
                                           transforms.ToTensor(),
                                           normalize]),
@@ -196,8 +196,8 @@ def main():
         datasets.CIFAR100('./CIFAR100/',
                           train=False,
                           transform=transforms.Compose([
-                                transforms.Resize(256),
-                                transforms.CenterCrop(224),
+                    #            transforms.Resize(256),
+                    #            transforms.CenterCrop(224),
                                 transforms.ToTensor(),
                                 normalize]),
                           download=True),
