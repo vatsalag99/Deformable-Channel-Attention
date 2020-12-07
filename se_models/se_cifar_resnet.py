@@ -2,6 +2,11 @@ import torch.nn as nn
 from torchvision.models import ResNet
 from .se_layer import SELayer
 
+def conv3x3(in_planes, out_planes, stride=1):
+        return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+
+
+
 class CifarSEBasicBlock(nn.Module):
     def __init__(self, inplanes, planes, stride=1, reduction=16):
         super(CifarSEBasicBlock, self).__init__()
@@ -35,7 +40,7 @@ class CifarSEBasicBlock(nn.Module):
 
 
 class CifarSEResNet(nn.Module):
-    def __init__(self, block, n_size, num_classes=10, reduction=16):
+    def __init__(self, block, n_size, num_classes=100, reduction=16):
         super(CifarSEResNet, self).__init__()
         self.inplane = 16
         self.conv1 = nn.Conv2d(

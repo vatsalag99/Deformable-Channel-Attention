@@ -97,7 +97,7 @@ def eca_resnet20(**kwargs):
 def eca_resnet32(**kwargs):
     """Constructs a ResNet-34 model.
     """
-    model = CifarECAResNet(CifarECABasicBlock, 5, k_size=[3,3 5],**kwargs)
+    model = CifarECAResNet(CifarECABasicBlock, 5, k_size=[3,3,5],**kwargs)
     return model
 
 

@@ -22,6 +22,7 @@ class DeformConv1D(nn.Module):
         x = rearrange(x, 'b c h w -> b c (h w)')
         x = rearrange(x, 'b c n -> b n c')
 
+        offset = offset.float()
         dtype = offset.data.type()
         ks = self.kernel_size
         N = offset.size(1) # Kernel size (only x direction)

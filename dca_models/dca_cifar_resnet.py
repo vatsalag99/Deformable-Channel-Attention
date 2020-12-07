@@ -13,7 +13,7 @@ class CifarDCABasicBlock(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.dca = DCALayer(planes, k_size)
+        self.dca = DCALayer(planes, k_size, attn_type = 'use_local_deform')
         if inplanes != planes:
             self.downsample = nn.Sequential(nn.Conv2d(inplanes, planes, kernel_size=1, stride=stride, bias=False),
                                             nn.BatchNorm2d(planes))

@@ -89,8 +89,11 @@ class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000, k_size=[3, 3, 3, 3]):
         self.inplanes = 64
         super(ResNet, self).__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
+        
+        if num_classes == 10 or num_classes == 100:
+            self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=3, bias=False)
+        else:
+            self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -171,6 +174,20 @@ def eca_resnet34(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
 
 
 def eca_resnet50(k_size=[3, 3, 3, 3], num_classes=1000, pretrained=False):
+    """Constructs a ResNet-50 model.
+
+    Args:
+        k_size: Adaptive selection of kernel size
+        num_classes:The classes of classification
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+    """
+    print("Constructing eca_resnet50......")
+    model = ResNet(ECABottleneck, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size)
+    model.avgpool = nn.AdaptiveAvgPool2d(1)
+    return model
+
+
+def eca_cifar_resnet50(k_size=[3, 3, 3, 3], num_classes=100, pretrained=False):
     """Constructs a ResNet-50 model.
 
     Args:

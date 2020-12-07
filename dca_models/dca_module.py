@@ -11,18 +11,42 @@ class dca_layer(nn.Module):
     Args:
         channel: Number of channels of the input feature map
         k_size: Adaptive selection of kernel size
+        attn_type: Types of attention - ["use_local_deform", "use_nonlocal_deform", 
+                                         "use_both_weighted_all_zeros", "use_both_weighted_nonlocal_zero"] 
     """
-    def __init__(self, channel=512, k_size=3, use_cov=False):
+    def __init__(self, channel=512, k_size=3, attn_type='use_local_deform'):
         super(dca_layer, self).__init__()
-
-        self.use_cov = use_cov
 
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
 
-        if use_cov:
-            self.conv_offset = dca_offsets_layer(channel, k_size)
-        else:
-            self.conv_offset = nn.Conv1d(1, k_size, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+        uses_local = attn_type != "use_nonlocal_deform"
+        uses_nonlocal = attn_type != "use_local_deform"
+        uses_weighted = attn_type == "use_both_weighted_all_zeros" or attn_type == "use_both_weighted_nonlocal_zero" 
+
+
+        if uses_nonlocal:
+            self.conv_offset_nonlocal = dca_offsets_layer(channel, k_size)
+            
+            if attn_type == "use_nonlocal_deform":
+                self.weight_nonlocal = nn.Parameter(torch.zeros(1, channel, 1, 1))
+                self.bias = nn.Parameter(torch.ones(1, channel, 1, 1))
+        
+        if uses_local:
+            self.conv_offset_local = nn.Conv1d(1, k_size, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+        
+        if uses_weighted: 
+            if attn_type == "use_both_weighted_nonlocal_zero":
+                self.weight_local = nn.Parameter(torch.ones(1, channel, 1, 1))
+            else:
+                self.weight_local = nn.Parameter(torch.zeros(1, channel, 1, 1))
+            self.weight_nonlocal = nn.Parameter(torch.zeros(1, channel, 1, 1))
+            self.bias = nn.Parameter(torch.ones(1, channel, 1, 1))
+
+        self.uses_local = uses_local 
+        self.uses_nonlocal = uses_nonlocal
+        self.uses_weighted = uses_weighted 
+    
+        self.attn_type = attn_type
 
         self.deform_conv = DeformConv1D(1, 1, kernel_size=k_size)
         self.sigmoid = nn.Sigmoid()
@@ -36,18 +60,28 @@ class dca_layer(nn.Module):
         y_reshaped = rearrange(y, 'b c h w -> b c (h w)')
         y_reshaped = rearrange(y_reshaped, 'b c n -> b n c')
 
-        if self.use_cov:
-            offset = self.conv_offset(x)
+        if self.uses_nonlocal:
+            offset_nonlocal = self.conv_offset_nonlocal(x)
+            y_nonlocal = self.deform_conv(y, offset_nonlocal)
+            y_nonlocal = rearrange(y_nonlocal, 'b n c -> b c n')
+            y_nonlocal = rearrange(y_nonlocal, 'b c (h w) -> b c h w', h=1, w=1)
+
+        if self.uses_local:
+            offset_local = self.conv_offset_local(y_reshaped)
+            y_local = self.deform_conv(y, offset_local)
+            y_local = rearrange(y_local, 'b n c -> b c n')
+            y_local = rearrange(y_local, 'b c (h w) -> b c h w', h=1, w=1)
+
+        if self.uses_weighted:
+            y = y_local * self.weight_local + y_nonlocal * self.weight_nonlocal + self.bias
+            attended = self.sigmoid(y).expand_as(x) * x
         else:
-            offset = self.conv_offset(y_reshaped)
+            if self.uses_local:
+                assert self.attn_type == "use_local_deform"
+                attended = self.sigmoid(y_local).expand_as(x) * x
+            if self.uses_nonlocal:
+                assert self.attn_type == "use_nonlocal_deform"
+                y_nonlocal = self.weight_nonlocal * y_nonlocal + self.bias 
+                attended = self.sigmoid(y_nonlocal).expand_as(x) * x
 
-#         offset = repeat(torch.tensor([0, 100, 212]), 'k -> b c k', c=512, b=b)
-#         offset = rearrange(offset, 'b c k -> b k c')
-
-        y = self.deform_conv(y, offset)
-        y = rearrange(y, 'b n c -> b c n')
-        y = rearrange(y, 'b c (h w) -> b c h w', h=1, w=1)
-
-        # Multi-scale information fusion
-        y = self.sigmoid(y)
-        return x * y.expand_as(x)
+        return attended 

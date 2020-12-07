@@ -13,13 +13,12 @@ class dca_offsets_layer(nn.Module):
         self.channel = channel
         self.n_offsets = n_offsets
 
-        self.conv = nn.Conv2d(channel, n_offsets, kernel_size=1)
-
     def covariance_features(self, x):
         """
         Takes in a feature map and returns the unnormalized covariance matrix
         """
         m_batchsize, C, height, width = x.size()
+        x = x - x.mean(dim=1, keepdim=True) / (x.std(dim=1, keepdim=True) + 1e-5)
         proj_query = x.view(m_batchsize, C, -1)
         proj_key = x.view(m_batchsize, C, -1).permute(0, 2, 1)
         energy = torch.bmm(proj_query, proj_key)
@@ -28,5 +27,9 @@ class dca_offsets_layer(nn.Module):
     def forward(self, x):
         m_batchsize, C, height, width = x.size()
         cov_matrix = self.covariance_features(x).reshape(m_batchsize, C, 1, C)
-        offsets = self.conv(cov_matrix).squeeze()
-        return offsets
+
+        _, locations = torch.topk(cov_matrix, self.n_offsets, dim=1)
+        delta = torch.stack(self.n_offsets*[torch.arange(0, self.channel)], dim=0)
+        delta = torch.stack(m_batchsize * [delta], dim=0)
+        offsets = locations.squeeze() - delta.cuda()
+        return offsets 
