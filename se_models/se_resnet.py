@@ -89,7 +89,7 @@ class ResNet(nn.Module):
         super(ResNet, self).__init__()
         
         if num_classes == 10 or num_classes == 100:
-            self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=3,bias=False)
+            self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=3,bias=False)
         else:
             self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
 

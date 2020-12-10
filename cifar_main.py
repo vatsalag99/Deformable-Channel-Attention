@@ -18,9 +18,9 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
-# import dca_models as models
+import dca_models as models
 # import eca_models as models
-import se_models as models
+# import se_models as models
 
 model_names = sorted(name for name in models.__dict__ if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
 
@@ -137,6 +137,7 @@ def main():
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
+    
 
     sys.stdout.flush()                      # <--- added line to flush output
 
@@ -163,8 +164,9 @@ def main():
     # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
     #                                 std=[0.229, 0.224, 0.225])
 
-    normalize = transforms.Normalize(mean=[0.5071, 0.4867, 0.4408], std=[0.2675, 0.2565, 0.2761])
 
+    normalize = transforms.Normalize(mean=[x / 255.0 for x in [125.3, 123.0, 113.9]],
+                                     std=[x / 255.0 for x in [63.0, 62.1, 66.7]])
     """
     train_dataset = datasets.ImageFolder(
         traindir,
@@ -179,7 +181,7 @@ def main():
     train_dataset = datasets.CIFAR100('./CIFAR100/',
                                       train=True,
                                       transform=transforms.Compose([
-                    #                      transforms.RandomResizedCrop(224),
+                                          transforms.RandomCrop(32, padding=4),
                                           transforms.RandomHorizontalFlip(),
                                           transforms.ToTensor(),
                                           normalize]),
@@ -198,8 +200,6 @@ def main():
         datasets.CIFAR100('./CIFAR100/',
                           train=False,
                           transform=transforms.Compose([
-                    #            transforms.Resize(256),
-                    #            transforms.CenterCrop(224),
                                 transforms.ToTensor(),
                                 normalize]),
                           download=True),
@@ -396,6 +396,7 @@ class AverageMeter(object):
 
 def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 5 every 60 epochs"""
+    # """
     if epoch >= 160:
         lr = args.lr * 0.2 **3
     elif epoch >= 120:
@@ -404,6 +405,9 @@ def adjust_learning_rate(optimizer, epoch):
         lr = args.lr * 0.2
     else:
         lr = args.lr 
+    # """
+
+    # lr = args.lr * (0.2 ** (epoch // 30)) 
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
