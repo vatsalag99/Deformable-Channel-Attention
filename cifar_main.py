@@ -24,8 +24,6 @@ import dca_models as models
 
 model_names = sorted(name for name in models.__dict__ if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
 
-print(model_names)
-
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
@@ -137,6 +135,7 @@ def main():
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
     
 
     sys.stdout.flush()                      # <--- added line to flush output
@@ -229,7 +228,8 @@ def main():
         start_time = time.time()
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        adjust_learning_rate(optimizer, epoch)
+        # adjust_learning_rate(optimizer, epoch)
+        
 
         # train for one epoch
         # train(train_loader, model, criterion, optimizer, epoch)
@@ -243,6 +243,9 @@ def main():
         prec1, prec5 = validate(val_loader, model, criterion)
         val_prec1_plot[epoch] = prec1
         val_prec5_plot[epoch] = prec5
+
+        # adjust scheduler 
+        scheduler.step()
 
         # remember best prec@1 and save checkpoint
         is_best = prec1 > best_prec1
@@ -407,7 +410,7 @@ def adjust_learning_rate(optimizer, epoch):
         lr = args.lr 
     # """
 
-    # lr = args.lr * (0.2 ** (epoch // 30)) 
+    # lr = args.lr * (0.5 ** (epoch // 10)) 
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
