@@ -1,7 +1,7 @@
 import torch.nn as nn
 import math
 # import torch.utils.model_zoo as model_zoo
-from .dca_module import dca_layer
+from .csa_module import csa_layer
 
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -10,17 +10,17 @@ def conv3x3(in_planes, out_planes, stride=1):
                      padding=1, bias=False)
 
 
-class DCABasicBlock(nn.Module):
+class CSABasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, k_size=3, use_shuffle=False):
-        super(DCABasicBlock, self).__init__()
+    def __init__(self, inplanes, planes, stride=1, downsample=None, k_size=3,  use_group_conv=False):
+        super(CSABasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes, 1)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.dca = dca_layer(planes, k_size, use_shuffle)
+        self.csa = csa_layer(planes, k_size, use_group_conv)
         self.downsample = downsample
         self.stride = stride
 
@@ -32,7 +32,7 @@ class DCABasicBlock(nn.Module):
 
         out = self.conv2(out)
         out = self.bn2(out)
-        out = self.dca(out)
+        out = self.csa(out)
 
         if self.downsample is not None:
             residual = self.downsample(x)
@@ -43,22 +43,26 @@ class DCABasicBlock(nn.Module):
         return out
 
 
-class DCABottleneck(nn.Module):
+class CSABottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, k_size=3, dropout=0.25, 
-                       channels_per_group=32, n_groups=None, use_shuffle=False):
-
-        super(DCABottleneck, self).__init__()
+    def __init__(self, inplanes, planes, stride=1, downsample=None, k_size=3, use_group_conv=False):
+        super(CSABottleneck, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
                                padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
+        
+        if use_group_conv:
+            self.groups = int(2 ** (math.ceil(math.log(k_size, 2))))
+            self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, groups=self.groups, bias=False)
+        else:
+            self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
+
         self.bn3 = nn.BatchNorm2d(planes * 4)
         self.relu = nn.ReLU(inplace=True)
-        self.dca = dca_layer(planes * 4, k_size, dropout, channels_per_group, n_groups,  use_shuffle)
+        self.csa = csa_layer(planes * 4, k_size)
         self.downsample = downsample
         self.stride = stride
 
@@ -75,7 +79,7 @@ class DCABottleneck(nn.Module):
 
         out = self.conv3(out)
         out = self.bn3(out)
-        out = self.dca(out)
+        out = self.csa(out)
 
         if self.downsample is not None:
             residual = self.downsample(x)
@@ -88,8 +92,7 @@ class DCABottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, k_size=[3, 3, 3, 3], dropout=0.25, 
-                       channels_per_group=32, n_groups=None, use_shuffle=False):
+    def __init__(self, block, layers, num_classes=1000, k_size=[3, 3, 3, 3], use_group_conv=False):
         self.inplanes = 64
         super(ResNet, self).__init__()
 
@@ -102,10 +105,10 @@ class ResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0], int(k_size[0]), 1, dropout, channels_per_group, n_groups, use_shuffle)
-        self.layer2 = self._make_layer(block, 128, layers[1], int(k_size[1]), 2, dropout, channels_per_group, n_groups, use_shuffle)
-        self.layer3 = self._make_layer(block, 256, layers[2], int(k_size[2]), 2, dropout, channels_per_group, n_groups, use_shuffle)
-        self.layer4 = self._make_layer(block, 512, layers[3], int(k_size[3]), 2, dropout, channels_per_group, n_groups, use_shuffle)
+        self.layer1 = self._make_layer(block, 64, layers[0], int(k_size[0]), use_group_conv=use_group_conv)
+        self.layer2 = self._make_layer(block, 128, layers[1], int(k_size[1]), stride=2,  use_group_conv=use_group_conv)
+        self.layer3 = self._make_layer(block, 256, layers[2], int(k_size[2]), stride=2,  use_group_conv=use_group_conv)
+        self.layer4 = self._make_layer(block, 512, layers[3], int(k_size[3]), stride=2,  use_group_conv=use_group_conv)
         self.avgpool = nn.AvgPool2d(7, stride=1)
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
@@ -117,8 +120,9 @@ class ResNet(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-    def _make_layer(self, block, planes, blocks, k_size, stride=1, dropout=0.25, 
-                       channels_per_group=32, n_groups=None, use_shuffle=False):
+    def _make_layer(self, block, planes, blocks, k_size, stride=1, 
+            use_group_conv=False):
+
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
@@ -128,10 +132,10 @@ class ResNet(nn.Module):
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, k_size, dropout, channels_per_group, n_groups, use_shuffle))
+        layers.append(block(self.inplanes, planes, stride, downsample, k_size, use_group_conv=use_group_conv))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes, 1, None,  k_size, dropout, channels_per_group, n_groups, use_shuffle))
+            layers.append(block(self.inplanes, planes, k_size=k_size,  use_group_conv=use_group_conv))
 
         return nn.Sequential(*layers)
 
@@ -153,7 +157,7 @@ class ResNet(nn.Module):
         return x
 
 
-def dca_resnet18(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
+def csa_resnet18(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False, use_cov=False):
     """Constructs a ResNet-18 model.
 
     Args:
@@ -161,12 +165,12 @@ def dca_resnet18(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         num_classes:The classes of classification
     """
-    model = ResNet(DCABasicBlock, [2, 2, 2, 2], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
+    model = ResNet(CSABasicBlock, [2, 2, 2, 2], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
     model.avgpool = nn.AdaptiveAvgPool2d(1)
     return model
 
 
-def dca_resnet34(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
+def csa_resnet34(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False, use_cov=False):
     """Constructs a ResNet-34 model.
 
     Args:
@@ -174,12 +178,12 @@ def dca_resnet34(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         num_classes:The classes of classification
     """
-    model = ResNet(DCABasicBlock, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
+    model = ResNet(CSABasicBlock, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
     model.avgpool = nn.AdaptiveAvgPool2d(1)
     return model
 
 
-def dca_resnet50(k_size=[3, 3, 3, 3], num_classes=1000, pretrained=False):
+def csa_resnet50(k_size=[3, 3, 3, 3], num_classes=1000, pretrained=False, use_cov=False):
     """Constructs a ResNet-50 model.
 
     Args:
@@ -187,12 +191,12 @@ def dca_resnet50(k_size=[3, 3, 3, 3], num_classes=1000, pretrained=False):
         num_classes:The classes of classification
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    print("Constructing dca_resnet50......")
-    model = ResNet(DCABottleneck, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
+    print("Constructing csa_resnet50......")
+    model = ResNet(CSABottleneck, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
     model.avgpool = nn.AdaptiveAvgPool2d(1)
     return model
 
-def dca_cifar100_resnet50_local_deform(k_size=[3, 3, 3, 3], num_classes=100, pretrained=False):
+def csa_cifar100_resnet50(k_size=[3, 3, 3, 3], num_classes=100, pretrained=False):
     """Constructs a ResNet-50 model.
 
     Args:
@@ -200,14 +204,14 @@ def dca_cifar100_resnet50_local_deform(k_size=[3, 3, 3, 3], num_classes=100, pre
         num_classes:The classes of classification
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    print("Constructing dca_resnet50......")
-    model = ResNet(DCABottleneck, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size, attn_type='use_local_deform')
+    print("Constructing csa_resnet50......")
+    model = ResNet(CSABottleneck, [3, 4, 6, 3], num_classes=num_classes, 
+            k_size=k_size)
     model.avgpool = nn.AdaptiveAvgPool2d(1)
     return model
 
 
-def dca_cifar100_resnet50_local_deform_shuffle(k_size=[3, 3, 3, 3], num_classes=100, pretrained=False, dropout=0.25, 
-                                               channels_per_group=32, n_groups=None):
+def csa_cifar100_resnet50_group_conv(k_size=[3, 3, 3, 3], num_classes=100, pretrained=False):
     """Constructs a ResNet-50 model.
 
     Args:
@@ -215,14 +219,12 @@ def dca_cifar100_resnet50_local_deform_shuffle(k_size=[3, 3, 3, 3], num_classes=
         num_classes:The classes of classification
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    print("Constructing dca_resnet50......")
-    model = ResNet(DCABottleneck, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size, dropout=dropout, 
-                                                channels_per_group=channels_per_group, n_groups=n_groups, 
-                                                use_shuffle=True)
+    print("Constructing csa_resnet50......")
+    model = ResNet(CSABottleneck, [3, 4, 6, 3], num_classes=num_classes, k_size=k_size, use_group_conv=True)
     model.avgpool = nn.AdaptiveAvgPool2d(1)
     return model
 
-def dca_resnet101(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
+def csa_resnet101(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False, use_cov=False):
     """Constructs a ResNet-101 model.
 
     Args:
@@ -230,12 +232,12 @@ def dca_resnet101(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
         num_classes:The classes of classification
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(DCABottleneck, [3, 4, 23, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
+    model = ResNet(CSABottleneck, [3, 4, 23, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
     model.avgpool = nn.AdaptiveAvgPool2d(1)
     return model
 
 
-def dca_resnet152(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
+def csa_resnet152(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False, use_cov=False):
     """Constructs a ResNet-152 model.
 
     Args:
@@ -243,6 +245,6 @@ def dca_resnet152(k_size=[3, 3, 3, 3], num_classes=1_000, pretrained=False):
         num_classes:The classes of classification
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(DCABottleneck, [3, 8, 36, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
+    model = ResNet(CSABottleneck, [3, 8, 36, 3], num_classes=num_classes, k_size=k_size, use_cov=use_cov)
     model.avgpool = nn.AdaptiveAvgPool2d(1)
     return model

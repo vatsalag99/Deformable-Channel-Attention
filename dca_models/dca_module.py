@@ -16,22 +16,24 @@ class dca_layer(nn.Module):
         attn_type: Types of attention - ["use_local_deform", "use_nonlocal_deform", 
                                          "use_both_weighted_all_zeros", "use_both_weighted_nonlocal_zero"] 
     """
-    def __init__(self, channel=512, k_size=3, attn_type='use_local_deform', use_shuffle=False):
+    def __init__(self, channel=512, k_size=3, dropout=0.25, channels_per_group=32, n_groups=None, use_shuffle=True):
+
         super(dca_layer, self).__init__()
 
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
 
-        if attn_type == 'use_local_deform':
-            self.conv_offset_local = nn.Conv1d(1, k_size, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
-       
-        
+        self.conv_offset_local = nn.Conv1d(1, k_size, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+    
         if use_shuffle:
-            self.groups = int(2 ** (math.ceil(math.log(k_size, 2))))
+            if n_groups is not None:
+                self.groups = n_groups 
+            else:
+                self.groups = channel // channels_per_group
 
-        self.attn_type = attn_type
         self.use_shuffle = use_shuffle 
 
-        self.dropout = nn.Dropout(p=0.2)
+        self.dropout = nn.Dropout(p=dropout)
         self.deform_conv = DeformConv1D(1, 1, kernel_size=k_size)
         self.sigmoid = nn.Sigmoid()
 
@@ -47,8 +49,12 @@ class dca_layer(nn.Module):
     def forward(self, x):
         # x: input features with shape [b, c, h, w]
         b, c, h, w = x.size()
+        
         # feature descriptor on the global spatial information
-        y = self.avg_pool(x)
+        y = self.max_pool(x)
+
+         # Dropout 
+        y = self.dropout(y)
 
         if self.use_shuffle:
             y = self.channel_shuffle(y, self.groups)
@@ -56,17 +62,15 @@ class dca_layer(nn.Module):
         y_reshaped = rearrange(y, 'b c h w -> b c (h w)')
         y_reshaped = rearrange(y_reshaped, 'b c n -> b n c')
 
-        if self.attn_type == 'use_local_deform':
-            offset_local = self.conv_offset_local(y_reshaped)
-            y_local = self.deform_conv(y, offset_local)
+        offset_local = self.conv_offset_local(y_reshaped)
+        y_local = self.deform_conv(y, offset_local)
             
-            # y_local = self.dropout(y_local)
-            y_local = rearrange(y_local, 'b n c -> b c n')
-            y_local = rearrange(y_local, 'b c (h w) -> b c h w', h=1, w=1)
+        y_local = rearrange(y_local, 'b n c -> b c n') 
+        y_local = rearrange(y_local, 'b c (h w) -> b c h w', h=1, w=1)
+        
+        if self.use_shuffle:
+            y_local = self.channel_shuffle(y, groups = c // self.groups)
             
-            if self.use_shuffle:
-                y_local = self.channel_shuffle(y, groups = c // self.groups)
-            
-            attended = self.sigmoid(y_local).expand_as(x) * x
+        attended = self.sigmoid(y_local).expand_as(x) * x + x
 
         return attended 

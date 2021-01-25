@@ -18,7 +18,7 @@ class DeformConv1D(nn.Module):
     def forward(self, x, offset):
         # x - b, c, 1, 1
         # offset - b k c (k = kernel_size)
-        
+       
         x = rearrange(x, 'b c h w -> b c (h w)')
         x = rearrange(x, 'b c n -> b n c')
 
@@ -107,8 +107,7 @@ class DeformConv1D(nn.Module):
         p_0 = self._get_p_0(w, N, dtype)
 
         # print(p_n.shape, p_0.shape)
-
-        p = p_0 + p_n + offset
+        p = p_0.to(offset.device) + p_n.to(offset.device) + offset
 
         return p
 

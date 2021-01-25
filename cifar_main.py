@@ -18,7 +18,8 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
-import dca_models as models
+import dca_models as models 
+# import csa_models as models
 # import eca_models as models
 # import se_models as models
 
@@ -60,14 +61,20 @@ parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
-parser.add_argument('--seed', default=42, type=int, nargs='+',
+parser.add_argument('--seed', default=42, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--gpu', default=0, type=int,
                     help='GPU id to use.')
 parser.add_argument('--ksize', default=None, type=list,
                     help='Manually select the eca module kernel size')
-parser.add_argument('--use_cov',
-                    help='Select whether the DCA module uses covariance matrix for offsets')
+
+parser.add_argument('--dropout', default=0.25, type=float, 
+                    help='Manually select the dropout')
+parser.add_argument('--channels_per_group', default=32, type=int, 
+                    help='Manually select the number of channels per group')
+parser.add_argument('--n_groups', default=None, type=int, 
+                    help='Manually select the number of groups') 
+
 parser.add_argument('--action', default='', type=str,
                     help='other information.')
 
@@ -108,7 +115,9 @@ def main():
         if args.ksize == None:
             model = models.__dict__[args.arch]()
         else:
-            model = models.__dict__[args.arch](k_size=args.ksize)
+            model = models.__dict__[args.arch](k_size=args.ksize, dropout=args.dropout, 
+                                               channels_per_group=args.channels_per_group,
+                                               n_groups=args.n_groups)
 
     if args.gpu is not None:
         model = model.cuda(args.gpu)
@@ -135,7 +144,7 @@ def main():
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
     
 
     sys.stdout.flush()                      # <--- added line to flush output
@@ -228,7 +237,7 @@ def main():
         start_time = time.time()
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        # adjust_learning_rate(optimizer, epoch)
+        adjust_learning_rate(optimizer, epoch)
         
 
         # train for one epoch
@@ -245,7 +254,7 @@ def main():
         val_prec5_plot[epoch] = prec5
 
         # adjust scheduler 
-        scheduler.step()
+        # scheduler.step()
 
         # remember best prec@1 and save checkpoint
         is_best = prec1 > best_prec1
@@ -400,11 +409,11 @@ class AverageMeter(object):
 def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 5 every 60 epochs"""
     # """
-    if epoch >= 160:
+    if epoch >= 180:
         lr = args.lr * 0.2 **3
-    elif epoch >= 120:
+    elif epoch >= 140:
         lr = args.lr * 0.2 ** 2
-    elif epoch >= 60:
+    elif epoch >= 80:
         lr = args.lr * 0.2
     else:
         lr = args.lr 
