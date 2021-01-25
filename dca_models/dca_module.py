@@ -23,8 +23,12 @@ class dca_layer(nn.Module):
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
 
-        self.conv_offset_local = nn.Conv1d(1, k_size, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
-    
+        self.conv_modulation = nn.Conv1d(1, k_size, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+        
+        self.offsets = nn.Parameter(torch.zeros(1, k_size, channel]))
+
+        # self.conv_offset_local = nn.Conv1d(1, k_size, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+        
         if use_shuffle:
             if n_groups is not None:
                 self.groups = n_groups 
@@ -62,8 +66,8 @@ class dca_layer(nn.Module):
         y_reshaped = rearrange(y, 'b c h w -> b c (h w)')
         y_reshaped = rearrange(y_reshaped, 'b c n -> b n c')
 
-        offset_local = self.conv_offset_local(y_reshaped)
-        y_local = self.deform_conv(y, offset_local)
+        modulations = self.conv_modulation(y_reshaped)
+        y_local = self.deform_conv(y, self.offsets, modulations)
             
         y_local = rearrange(y_local, 'b n c -> b c n') 
         y_local = rearrange(y_local, 'b c (h w) -> b c h w', h=1, w=1)
