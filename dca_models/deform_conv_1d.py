@@ -7,15 +7,18 @@ from einops import rearrange, reduce, repeat
 
 
 class DeformConv1D(nn.Module):
-    def __init__(self, inc=1, outc=1, kernel_size=3, padding=1, bias=None):
+    def __init__(self, inc=1, outc=1, kernel_size=3, padding=1, bias=None, modulation = False):
         super(DeformConv1D, self).__init__()
 
         self.kernel_size = kernel_size
         self.padding = padding
         self.zero_padding = nn.ConstantPad1d(kernel_size // 2, value=0)
+        self.modulation = modulation
+
+
         self.conv_kernel = nn.Conv1d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
 
-    def forward(self, x, offset):
+    def forward(self, x, offset, modulation=None):
         # x - b, c, 1, 1
         # offset - b k c (k = kernel_size)
        
@@ -23,6 +26,10 @@ class DeformConv1D(nn.Module):
         x = rearrange(x, 'b c n -> b n c')
 
         offset = offset.float()
+
+        if self.modulation:
+            torch.sigmoid(modulation)
+
         dtype = offset.data.type()
         ks = self.kernel_size
         N = offset.size(1) # Kernel size (only x direction)
@@ -53,10 +60,13 @@ class DeformConv1D(nn.Module):
 
 
         # (b, h, w, N)
+        """
         mask = (p[..., :N].lt(self.padding)+p[..., :N].gt(x.size(2)-1-self.padding)).type_as(p)
         mask = mask.detach()
         floor_p = p - (p - torch.floor(p))
         p = p*(1-mask) + floor_p*mask
+        """ 
+
         p = torch.clamp(p[..., :N], 0, x.size(2)-1)
 
         # print('pnew: ', p.shape)
@@ -77,6 +87,12 @@ class DeformConv1D(nn.Module):
                    g_right.unsqueeze(dim=1) * x_q_right
 
         # print('x_offset: ', x_offset.shape)
+
+        if self.modulation:
+            m = m.contiguous(0, 2, 1)
+            m = m.unsqueeze(dim=1)
+            # m = torch.cat([m for _ in range(x_offset.size(1))], dim=1)
+            x_offset = x_offset * m 
 
         x_offset = self._reshape_x_offset(x_offset, ks)
         out = self.conv_kernel(x_offset)
