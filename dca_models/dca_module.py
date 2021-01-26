@@ -67,7 +67,7 @@ class dca_layer(nn.Module):
         y_reshaped = rearrange(y_reshaped, 'b c n -> b n c')
 
         modulations = self.conv_modulation(y_reshaped)
-        y_local = self.deform_conv(y, self.offsets, modulations)
+        y_local = self.deform_conv(y, self.offsets.repeat(b, 1, 1), modulations)
             
         y_local = rearrange(y_local, 'b n c -> b c n') 
         y_local = rearrange(y_local, 'b c (h w) -> b c h w', h=1, w=1)
